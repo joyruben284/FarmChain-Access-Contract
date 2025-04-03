@@ -379,3 +379,213 @@
         (ok new-policy-id)
     )
 )
+
+
+(define-map yield-predictions
+    { prediction-id: uint }
+    {
+        crop-id: uint,
+        predicted-yield: uint,
+        prediction-date: uint,
+        factors: (string-ascii 100)
+    }
+)
+
+(define-data-var last-prediction-id uint u0)
+
+(define-public (create-yield-prediction (crop-id uint) (predicted-yield uint) (factors (string-ascii 100)))
+    (let
+        ((new-prediction-id (+ (var-get last-prediction-id) u1))
+         (crop (unwrap! (get-crop-data crop-id) err-invalid-data)))
+        (try! (is-farm-owner (get farm-id crop)))
+        (map-set yield-predictions
+            { prediction-id: new-prediction-id }
+            {
+                crop-id: crop-id,
+                predicted-yield: predicted-yield,
+                prediction-date: stacks-block-height,
+                factors: factors
+            }
+        )
+        (var-set last-prediction-id new-prediction-id)
+        (ok new-prediction-id)
+    )
+)
+
+
+(define-map market-prices
+    { price-id: uint }
+    {
+        crop-type: (string-ascii 50),
+        price-per-unit: uint,
+        market-location: (string-ascii 50),
+        update-date: uint
+    }
+)
+
+(define-data-var last-price-id uint u0)
+
+(define-public (update-market-price (crop-type (string-ascii 50)) (price-per-unit uint) (market-location (string-ascii 50)))
+    (let
+        ((new-price-id (+ (var-get last-price-id) u1)))
+        (try! (is-authorized))
+        (map-set market-prices
+            { price-id: new-price-id }
+            {
+                crop-type: crop-type,
+                price-per-unit: price-per-unit,
+                market-location: market-location,
+                update-date: stacks-block-height
+            }
+        )
+        (var-set last-price-id new-price-id)
+        (ok new-price-id)
+    )
+)
+
+
+(define-map farm-expenses
+    { expense-id: uint }
+    {
+        farm-id: uint,
+        expense-type: (string-ascii 50),
+        amount: uint,
+        date: uint,
+        description: (string-ascii 100)
+    }
+)
+
+(define-data-var last-expense-id uint u0)
+
+(define-public (record-expense (farm-id uint) (expense-type (string-ascii 50)) (amount uint) (description (string-ascii 100)))
+    (let
+        ((new-expense-id (+ (var-get last-expense-id) u1)))
+        (try! (is-farm-owner farm-id))
+        (map-set farm-expenses
+            { expense-id: new-expense-id }
+            {
+                farm-id: farm-id,
+                expense-type: expense-type,
+                amount: amount,
+                date: stacks-block-height,
+                description: description
+            }
+        )
+        (var-set last-expense-id new-expense-id)
+        (ok new-expense-id)
+    )
+)
+
+(define-map rotation-plans
+    { plan-id: uint }
+    {
+        farm-id: uint,
+        field-identifier: (string-ascii 20),
+        current-crop: (string-ascii 50),
+        next-crop: (string-ascii 50),
+        rotation-date: uint
+    }
+)
+
+(define-data-var last-plan-id uint u0)
+
+(define-public (create-rotation-plan 
+    (farm-id uint) 
+    (field-identifier (string-ascii 20)) 
+    (current-crop (string-ascii 50)) 
+    (next-crop (string-ascii 50)) 
+    (rotation-date uint))
+    (let
+        ((new-plan-id (+ (var-get last-plan-id) u1)))
+        (try! (is-farm-owner farm-id))
+        (map-set rotation-plans
+            { plan-id: new-plan-id }
+            {
+                farm-id: farm-id,
+                field-identifier: field-identifier,
+                current-crop: current-crop,
+                next-crop: next-crop,
+                rotation-date: rotation-date
+            }
+        )
+        (var-set last-plan-id new-plan-id)
+        (ok new-plan-id)
+    )
+)
+
+
+(define-map soil-tests
+    { test-id: uint }
+    {
+        farm-id: uint,
+        field-location: (string-ascii 50),
+        ph-level: uint,
+        nitrogen-level: uint,
+        phosphorus-level: uint,
+        test-date: uint
+    }
+)
+
+(define-data-var last-test-id uint u0)
+
+(define-public (record-soil-test 
+    (farm-id uint) 
+    (field-location (string-ascii 50)) 
+    (ph-level uint) 
+    (nitrogen-level uint) 
+    (phosphorus-level uint))
+    (let
+        ((new-test-id (+ (var-get last-test-id) u1)))
+        (try! (is-farm-owner farm-id))
+        (map-set soil-tests
+            { test-id: new-test-id }
+            {
+                farm-id: farm-id,
+                field-location: field-location,
+                ph-level: ph-level,
+                nitrogen-level: nitrogen-level,
+                phosphorus-level: phosphorus-level,
+                test-date: stacks-block-height
+            }
+        )
+        (var-set last-test-id new-test-id)
+        (ok new-test-id)
+    )
+)
+
+
+(define-map water-usage
+    { usage-id: uint }
+    {
+        farm-id: uint,
+        field-id: (string-ascii 20),
+        amount: uint,
+        source: (string-ascii 50),
+        usage-date: uint
+    }
+)
+
+(define-data-var last-water-usage-id uint u0)
+
+(define-public (record-water-usage 
+    (farm-id uint) 
+    (field-id (string-ascii 20)) 
+    (amount uint) 
+    (source (string-ascii 50)))
+    (let
+        ((new-usage-id (+ (var-get last-water-usage-id) u1)))
+        (try! (is-farm-owner farm-id))
+        (map-set water-usage
+            { usage-id: new-usage-id }
+            {
+                farm-id: farm-id,
+                field-id: field-id,
+                amount: amount,
+                source: source,
+                usage-date: stacks-block-height
+            }
+        )
+        (var-set last-water-usage-id new-usage-id)
+        (ok new-usage-id)
+    )
+)

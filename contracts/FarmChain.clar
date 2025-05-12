@@ -589,3 +589,109 @@
         (ok new-usage-id)
     )
 )
+
+
+
+
+(define-map supply-chain-tracking
+    { tracking-id: uint }
+    {
+        harvest-id: uint,
+        location: (string-ascii 100),
+        handler: principal,
+        timestamp: uint,
+        stage: (string-ascii 20),
+        temperature: int,
+        humidity: uint
+    }
+)
+
+(define-data-var last-tracking-id uint u0)
+
+(define-public (track-supply-chain-event 
+    (harvest-id uint)
+    (location (string-ascii 100))
+    (stage (string-ascii 20))
+    (temperature int)
+    (humidity uint))
+    (let
+        ((new-tracking-id (+ (var-get last-tracking-id) u1))
+         (harvest (unwrap! (map-get? harvests { harvest-id: harvest-id }) err-invalid-data)))
+        (try! (is-farm-owner (get farm-id (unwrap! (get-crop-data (get crop-id harvest)) err-invalid-data))))
+        (map-set supply-chain-tracking
+            { tracking-id: new-tracking-id }
+            {
+                harvest-id: harvest-id,
+                location: location,
+                handler: tx-sender,
+                timestamp: stacks-block-height,
+                stage: stage,
+                temperature: temperature,
+                humidity: humidity
+            }
+        )
+        (var-set last-tracking-id new-tracking-id)
+        (ok new-tracking-id)
+    )
+)
+
+
+
+(define-map irrigation-schedules
+    { schedule-id: uint }
+    {
+        farm-id: uint,
+        field-id: (string-ascii 20),
+        moisture-threshold: uint,
+        water-amount: uint,
+        active: bool,
+        last-irrigation: uint,
+        frequency: uint
+    }
+)
+
+(define-data-var last-schedule-id uint u0)
+
+(define-public (create-irrigation-schedule
+    (farm-id uint)
+    (field-id (string-ascii 20))
+    (moisture-threshold uint)
+    (water-amount uint)
+    (frequency uint))
+    (let
+        ((new-schedule-id (+ (var-get last-schedule-id) u1)))
+        (try! (is-farm-owner farm-id))
+        (map-set irrigation-schedules
+            { schedule-id: new-schedule-id }
+            {
+                farm-id: farm-id,
+                field-id: field-id,
+                moisture-threshold: moisture-threshold,
+                water-amount: water-amount,
+                active: true,
+                last-irrigation: stacks-block-height,
+                frequency: frequency
+            }
+        )
+        (var-set last-schedule-id new-schedule-id)
+        (ok new-schedule-id)
+    )
+)
+
+(define-public (trigger-irrigation (schedule-id uint))
+    (let
+        ((schedule (unwrap! (map-get? irrigation-schedules { schedule-id: schedule-id }) err-invalid-data)))
+        (try! (is-farm-owner (get farm-id schedule)))
+        (asserts! (is-eq (get active schedule) true) err-invalid-data)
+        (asserts! (>= (- stacks-block-height (get last-irrigation schedule)) (get frequency schedule)) err-invalid-data)
+        (try! (record-water-usage 
+            (get farm-id schedule)
+            (get field-id schedule)
+            (get water-amount schedule)
+            "automated-irrigation"))
+        (map-set irrigation-schedules
+            { schedule-id: schedule-id }
+            (merge schedule { last-irrigation: stacks-block-height }))
+        (ok true)
+    )
+)

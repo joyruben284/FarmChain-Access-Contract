@@ -28,6 +28,51 @@
     }
 )
 
+
+
+(define-map quality-standards
+    { standard-id: uint }
+    {
+        crop-type: (string-ascii 50),
+        min-quality-score: uint,
+        max-moisture: uint,
+        max-contamination: uint,
+        required-certifications: (list 5 (string-ascii 20)),
+        active: bool
+    }
+)
+
+(define-map quality-assessments
+    { assessment-id: uint }
+    {
+        harvest-id: uint,
+        quality-score: uint,
+        moisture-level: uint,
+        contamination-level: uint,
+        assessment-date: uint,
+        assessor: principal,
+        passed: bool,
+        notes: (string-ascii 200)
+    }
+)
+
+(define-map quality-alerts
+    { alert-id: uint }
+    {
+        assessment-id: uint,
+        alert-type: (string-ascii 30),
+        severity: uint,
+        resolved: bool,
+        alert-date: uint,
+        resolution-date: (optional uint)
+    }
+)
+
+(define-data-var last-standard-id uint u0)
+(define-data-var last-assessment-id uint u0)
+(define-data-var last-alert-id uint u0)
+
+
 ;; Data Variables
 (define-data-var last-farm-id uint u0)
 (define-data-var last-crop-id uint u0)
@@ -693,5 +738,147 @@
             { schedule-id: schedule-id }
             (merge schedule { last-irrigation: stacks-block-height }))
         (ok true)
+    )
+)
+
+
+
+(define-public (create-quality-standard
+    (crop-type (string-ascii 50))
+    (min-quality-score uint)
+    (max-moisture uint)
+    (max-contamination uint)
+    (required-certifications (list 5 (string-ascii 20))))
+    (let
+        ((new-standard-id (+ (var-get last-standard-id) u1)))
+        (try! (is-authorized))
+        (map-set quality-standards
+            { standard-id: new-standard-id }
+            {
+                crop-type: crop-type,
+                min-quality-score: min-quality-score,
+                max-moisture: max-moisture,
+                max-contamination: max-contamination,
+                required-certifications: required-certifications,
+                active: true
+            }
+        )
+        (var-set last-standard-id new-standard-id)
+        (ok new-standard-id)
+    )
+)
+
+
+(define-public (create-quality-alert (assessment-id uint))
+    (let
+        (
+            (new-alert-id (+ (var-get last-alert-id) u1))
+            (assessment (unwrap! (map-get? quality-assessments { assessment-id: assessment-id }) err-invalid-data))
+        )
+        (map-set quality-alerts
+            { alert-id: new-alert-id }
+            {
+                assessment-id: assessment-id,
+                alert-type: "quality-failure",
+                severity: u3,
+                resolved: false,
+                alert-date: stacks-block-height,
+                resolution-date: none
+            }
+        )
+        (var-set last-alert-id new-alert-id)
+        (ok new-alert-id)
+    )
+)
+
+(define-public (resolve-quality-alert (alert-id uint))
+    (let
+        ((alert (unwrap! (map-get? quality-alerts { alert-id: alert-id }) err-invalid-data)))
+        (try! (is-authorized))
+        (map-set quality-alerts
+            { alert-id: alert-id }
+            (merge alert { 
+                resolved: true,
+                resolution-date: (some stacks-block-height)
+            })
+        )
+        (ok true)
+    )
+)
+
+(define-public (update-quality-standard (standard-id uint) (active bool))
+    (let
+        ((standard (unwrap! (map-get? quality-standards { standard-id: standard-id }) err-invalid-data)))
+        (try! (is-authorized))
+        (map-set quality-standards
+            { standard-id: standard-id }
+            (merge standard { active: active })
+        )
+        (ok true)
+    )
+)
+
+(define-read-only (get-quality-standard (standard-id uint))
+    (map-get? quality-standards { standard-id: standard-id })
+)
+
+(define-read-only (get-quality-assessment (assessment-id uint))
+    (map-get? quality-assessments { assessment-id: assessment-id })
+)
+
+(define-read-only (get-quality-alert (alert-id uint))
+    (map-get? quality-alerts { alert-id: alert-id })
+)
+
+(define-read-only (get-harvest-quality-status (harvest-id uint))
+    (let
+        ((assessment (get-latest-assessment-for-harvest harvest-id)))
+        (match assessment
+            some-assessment (get passed some-assessment)
+            false
+        )
+    )
+)
+
+(define-private (get-quality-standard-for-crop (crop-type (string-ascii 50)))
+    (let
+        ((standard-id u1))
+        (map-get? quality-standards { standard-id: standard-id })
+    )
+)
+
+(define-private (get-latest-assessment-for-harvest (harvest-id uint))
+    (map-get? quality-assessments { assessment-id: (var-get last-assessment-id) })
+)
+
+(define-read-only (calculate-quality-compliance-rate (farm-id uint))
+    (let
+        ((total-assessments u10)
+         (passed-assessments u8))
+        (if (> total-assessments u0)
+            (/ (* passed-assessments u100) total-assessments)
+            u0
+        )
+    )
+)
+
+;; (define-read-only (get-active-quality-alerts-count)
+;;     (u5)
+;; )
+
+(define-public (batch-quality-check (harvest-ids (list 10 uint)))
+    (let
+        ((results (map check-single-harvest harvest-ids)))
+        (ok results)
+    )
+)
+
+(define-private (check-single-harvest (harvest-id uint))
+    (let
+        ((harvest (map-get? harvests { harvest-id: harvest-id })))
+        (match harvest
+            some-harvest true
+            false
+        )
     )
 )

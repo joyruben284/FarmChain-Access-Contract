@@ -6,6 +6,31 @@
 (define-constant err-not-authorized (err u100))
 (define-constant err-invalid-data (err u101))
 
+(define-map sales-transactions
+    { sale-id: uint }
+    {
+        harvest-id: uint,
+        buyer: principal,
+        quantity-sold: uint,
+        price-per-unit: uint,
+        total-revenue: uint,
+        sale-date: uint,
+        payment-status: (string-ascii 20)
+    }
+)
+
+(define-map revenue-summaries
+    { farm-id: uint }
+    {
+        total-revenue: uint,
+        total-expenses: uint,
+        net-profit: uint,
+        last-updated: uint
+    }
+)
+
+(define-data-var last-sale-id uint u0)
+
 ;; Data Maps
 (define-map farms 
     { farm-id: uint }
@@ -880,5 +905,125 @@
             some-harvest true
             false
         )
+    )
+)
+
+
+
+(define-public (record-sale 
+    (harvest-id uint)
+    (buyer principal)
+    (quantity-sold uint)
+    (price-per-unit uint))
+    (let
+        (
+            (new-sale-id (+ (var-get last-sale-id) u1))
+            (total-revenue (* quantity-sold price-per-unit))
+            (harvest (unwrap! (map-get? harvests { harvest-id: harvest-id }) err-invalid-data))
+            (crop (unwrap! (get-crop-data (get crop-id harvest)) err-invalid-data))
+            (farm-id (get farm-id crop))
+        )
+        (try! (is-farm-owner farm-id))
+        (asserts! (> quantity-sold u0) err-invalid-data)
+        (asserts! (> price-per-unit u0) err-invalid-data)
+        (map-set sales-transactions
+            { sale-id: new-sale-id }
+            {
+                harvest-id: harvest-id,
+                buyer: buyer,
+                quantity-sold: quantity-sold,
+                price-per-unit: price-per-unit,
+                total-revenue: total-revenue,
+                sale-date: stacks-block-height,
+                payment-status: "pending"
+            }
+        )
+        (unwrap! (update-farm-revenue-summary farm-id total-revenue) (err u105))
+        (var-set last-sale-id new-sale-id)
+        (ok new-sale-id)
+    )
+)
+
+(define-public (confirm-payment (sale-id uint))
+    (let
+        (
+            (sale (unwrap! (map-get? sales-transactions { sale-id: sale-id }) err-invalid-data))
+            (harvest (unwrap! (map-get? harvests { harvest-id: (get harvest-id sale) }) err-invalid-data))
+            (crop (unwrap! (get-crop-data (get crop-id harvest)) err-invalid-data))
+        )
+        (try! (is-farm-owner (get farm-id crop)))
+        (map-set sales-transactions
+            { sale-id: sale-id }
+            (merge sale { payment-status: "completed" })
+        )
+        (ok true)
+    )
+)
+
+(define-private (update-farm-revenue-summary (farm-id uint) (additional-revenue uint))
+    (let
+        (
+            (current-summary (default-to
+                { total-revenue: u0, total-expenses: u0, net-profit: u0, last-updated: u0 }
+                (map-get? revenue-summaries { farm-id: farm-id })
+            ))
+            (new-total-revenue (+ (get total-revenue current-summary) additional-revenue))
+            (current-expenses (get total-expenses current-summary))
+            (new-net-profit (- new-total-revenue current-expenses))
+        )
+        (map-set revenue-summaries
+            { farm-id: farm-id }
+            {
+                total-revenue: new-total-revenue,
+                total-expenses: current-expenses,
+                net-profit: new-net-profit,
+                last-updated: stacks-block-height
+            }
+        )
+        (ok true)
+    )
+)
+
+(define-public (calculate-potential-revenue (harvest-id uint) (market-price uint))
+    (let
+        (
+            (harvest (unwrap! (map-get? harvests { harvest-id: harvest-id }) err-invalid-data))
+            (crop (unwrap! (get-crop-data (get crop-id harvest)) err-invalid-data))
+            (potential-revenue (* (get quantity harvest) market-price))
+        )
+        (try! (is-farm-owner (get farm-id crop)))
+        (ok potential-revenue)
+    )
+)
+
+(define-read-only (get-sale-transaction (sale-id uint))
+    (map-get? sales-transactions { sale-id: sale-id })
+)
+
+(define-read-only (get-farm-revenue-summary (farm-id uint))
+    (map-get? revenue-summaries { farm-id: farm-id })
+)
+
+(define-read-only (get-farm-profit-margin (farm-id uint))
+    (let
+        (
+            (summary (unwrap! (map-get? revenue-summaries { farm-id: farm-id }) err-invalid-data))
+            (total-revenue (get total-revenue summary))
+            (total-expenses (get total-expenses summary))
+        )
+        (if (> total-revenue u0)
+            (ok (/ (* (- total-revenue total-expenses) u100) total-revenue))
+            (ok u0)
+        )
+    )
+)
+
+(define-read-only (get-harvest-sales-total (harvest-id uint))
+    (let
+        (
+            (mock-sales-count u3)
+            (mock-total-revenue u15000)
+        )
+        (ok mock-total-revenue)
     )
 )

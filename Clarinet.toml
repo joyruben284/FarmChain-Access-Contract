@@ -9,6 +9,10 @@ requirements = []
 path = 'contracts/FarmChain.clar'
 clarity_version = 3
 epoch = 3.1
+[contracts.farm-integration-hub]
+path = 'contracts/farm-integration-hub.clar'
+clarity_version = 3
+epoch = 3.1
 [repl.analysis]
 passes = ['check_checker']
 
